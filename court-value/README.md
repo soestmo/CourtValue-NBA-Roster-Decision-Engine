@@ -24,6 +24,10 @@ Basketball operations decisions require balancing expected impact, financial fle
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
 ## Run
@@ -31,6 +35,9 @@ Backend:
 ```bash
 cd backend
 uvicorn main:app --reload
+
+cd backend
+python -m uvicorn main:app --reload
 ```
 
 Frontend:
