@@ -14,12 +14,20 @@ from schemas.canonical_player_schema import (
 from schemas.model_explainability_schema import GlobalImportanceSummary, LocalExplanationSummary
 from services.contribution_model import ContributionModelService
 from services.cost_efficiency import compute_cost_efficiency
-from services.data_loader import get_player_row, get_team_context, load_players, load_team_contexts
+from services.data_loader import (
+    DataLoadError,
+    get_data_quality_snapshot,
+    get_data_status,
+    get_player_row,
+    get_team_context,
+    load_players,
+    load_team_contexts,
+)
 from services.explainability import global_importance, local_explanation
 from services.recommendation import build_recommendation
 from services.roster_fit import compute_roster_fit
 
-app = FastAPI(title="CourtValue API", version="1.0.0")
+app = FastAPI(title="CourtValue API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,7 +37,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-players_df = load_players()
+try:
+    players_df = load_players()
+except DataLoadError as exc:
+    raise RuntimeError(str(exc)) from exc
 team_contexts_df = load_team_contexts()
 contribution_service = ContributionModelService()
 contribution_service.train(players_df)
@@ -39,9 +50,9 @@ def _build_player_schema(row) -> PlayerSeasonStats:
     return PlayerSeasonStats(
         player_id=int(row["player_id"]),
         player_name=row["player_name"],
-        age=int(row["age"]),
+        age=int(float(row["age"])),
         minutes_per_game=float(row["minutes_per_game"]),
-        games_played=int(row["games_played"]),
+        games_played=int(float(row["games_played"])),
         usage_rate=float(row["usage_rate"]),
         true_shooting_pct=float(row["true_shooting_pct"]),
         effective_fg_pct=float(row["effective_fg_pct"]),
@@ -53,17 +64,17 @@ def _build_player_schema(row) -> PlayerSeasonStats:
         three_point_attempt_rate=float(row["three_point_attempt_rate"]),
         free_throw_rate=float(row["free_throw_rate"]),
         bpm_proxy=float(row["bpm_proxy"]),
-        on_off_net_proxy=float(row["on_off_net_proxy"]),
-        primary_role=row["primary_role"],
+        on_off_net_proxy=float(row.get("on_off_net_proxy", 0.0) or 0.0),
+        primary_role=row.get("primary_role", "balanced"),
     )
 
 
 def _build_contract_schema(row) -> PlayerContract:
     return PlayerContract(
         player_id=int(row["player_id"]),
-        salary=float(row["salary"]),
-        years_remaining=int(row["years_remaining"]),
-        contract_type=row["contract_type"],
+        salary=float(row.get("salary", 0.0) or 0.0),
+        years_remaining=int(float(row.get("years_remaining", 0) or 0)),
+        contract_type=row.get("contract_type", "unknown") or "unknown",
     )
 
 
@@ -112,9 +123,21 @@ def health() -> dict:
     return {"status": "ok", "players_loaded": int(len(players_df))}
 
 
+@app.get("/data/status")
+def data_status() -> dict:
+    return get_data_status(players_df)
+
+
+@app.get("/data/quality")
+def data_quality() -> dict:
+    return get_data_quality_snapshot(players_df)
+
+
 @app.get("/players")
 def list_players() -> List[dict]:
-    return players_df[["player_id", "player_name", "primary_role", "age", "salary"]].to_dict(orient="records")
+    cols = ["player_id", "player_name", "primary_role", "age", "salary"]
+    present = [col for col in cols if col in players_df.columns]
+    return players_df[present].to_dict(orient="records")
 
 
 @app.get("/players/{player_id}")

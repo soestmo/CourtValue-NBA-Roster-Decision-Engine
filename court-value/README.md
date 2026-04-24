@@ -1,47 +1,50 @@
 # CourtValue: NBA Roster Decision Engine
 
 ## Project Description
-CourtValue is a local, reproducible roster decision-support application for evaluating NBA-style players using statistical performance, contract context, projected contribution modeling, deterministic value scoring, and deterministic roster fit scoring.
+CourtValue is a local, reproducible roster decision-support application for evaluating NBA players using statistical performance, contract context, projected contribution modeling, deterministic value scoring, and deterministic roster fit scoring.
 
-> Note: all player/team records in V1 are illustrative fictional data for portfolio demonstration.
+## V2 Real Data Integration
+V2 adds deterministic, local integration of free/public data sources with a strict fallback model:
 
-## Why This Exists
-Basketball operations decisions require balancing expected impact, financial flexibility, and contextual roster fit. This project demonstrates how to structure a practical decision engine that combines:
-- machine learning for projected contribution (XGBoost),
-- deterministic business logic for cap/value trade-offs,
-- deterministic basketball fit heuristics,
-- transparent explainability (global feature importance + local SHAP drivers).
+1. `nba_api` (primary stats)
+2. `BALLDONTLIE` (optional salary/contracts, requires key)
+3. Kaggle SQLite NBA DB (optional backfill, requires local file)
+4. Sample CSVs (always available fallback)
 
-## Architecture
-- **Backend**: FastAPI + pandas/numpy + xgboost + shap.
-- **Data**: local CSV files in `backend/data`.
-- **Modeling**: XGBoost regressor trained on a synthetic `future_impact_proxy` target.
-- **Frontend**: Vite + React + TypeScript + Recharts.
-- **No agents in V1**.
+### Environment Variables
+- `COURTVALUE_DATA_MODE` = `auto` (default), `real`, or `sample`
+- `BALLDONTLIE_API_KEY` (optional)
+- `KAGGLE_NBA_SQLITE_PATH` (optional local SQLite path)
 
-## Install Instructions
+Behavior:
+- `sample`: only sample CSVs
+- `real`: requires real canonical data, fails clearly if unavailable
+- `auto`: tries real canonical data first, falls back to sample
+
+## Install
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run
-Backend:
+## Run real ingestion
+```bash
+cd backend
+python scripts/ingest_real_data.py --mode auto --seasons 2021-22 2022-23 2023-24 2024-25
+python scripts/build_canonical_tables.py --seasons 2021-22 2022-23 2023-24 2024-25
+```
+
+## Run backend
 ```bash
 cd backend
 uvicorn main:app --reload
 ```
 
-Frontend:
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
 ## API Endpoints
 - `GET /health`
+- `GET /data/status`
+- `GET /data/quality`
 - `GET /players`
 - `GET /players/{player_id}`
 - `GET /evaluate/{player_id}?team_context=SAC`
@@ -49,26 +52,8 @@ npm run dev
 - `GET /model/feature-importance`
 - `GET /explain/{player_id}`
 
-## Modeling Approach
-- Feature pipeline includes age, workload, efficiency, playmaking/defense, and contract variables.
-- Synthetic `future_impact_proxy` target blends BPM proxy, on/off net proxy, minutes, shooting, age curve, and games played.
-- XGBoost predicts contribution signal and derives:
-  - projected years 1-3,
-  - uncertainty band,
-  - 0-100 projected contribution score.
-
-## Explainability Approach
-- **Global**: XGBoost gain feature importance.
-- **Local**: SHAP TreeExplainer top positive/negative drivers with deterministic natural-language interpretations.
-
 ## Limitations
-- V1 uses synthetic illustrative data.
-- No injury history feed or play-by-play granularity.
-- Team context is intentionally simplified for reproducibility.
-- Scores are decision support signals, not final decision makers.
-
-## Next Steps
-- Add scenario simulations for trade packages.
-- Add role/lineup interaction modeling.
-- Add richer context packs for multiple teams.
-- Calibrate with historical outcome labels when real data is integrated.
+- Free/public sources can have missing fields and occasional endpoint instability.
+- BALLDONTLIE salary/contract access may vary by account tier.
+- Vendor-grade optical tracking is not included.
+- Missing contract/on-off fields are preserved as null/default-safe values (not fabricated).
